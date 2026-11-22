@@ -1079,7 +1079,11 @@ private:
   // currentOffset snapshot at queue time).
   // Ref-counted state travels via setters to D9EncodingState on encode thread;
   // override_* args are per-call, not device state.
-  D3D9DrawCapture BuildDrawCapture();
+  // [ib_begin, ib_end) is the byte range of the bound index buffer the draw
+  // reads (MTLD3D9IndexBuffer::refreshRange): an empty range for a draw that
+  // reads none (non-indexed, or with an index buffer of its own); the default
+  // refreshes the whole buffer, as every draw did before.
+  D3D9DrawCapture BuildDrawCapture(UINT ib_begin = 0, UINT ib_end = UINT_MAX);
 
   // Op-stream queue helpers. QueueBatchedDraw appends to m_pendingDraws
   // *and* records its position in m_pendingOps; QueueBlitOp does the
@@ -1716,6 +1720,7 @@ private:
   // Bound textures: 0..15 PS, 16..19 VS samplers. D3DDMAPSAMPLER (256)
   // silently ignored. Stored as private refs; SetTexture doesn't cycle
   // public refcount. Slot type is common base for 2D/Cube/Volume.
+  void d9LogDraw(uint32_t n, D3DPRIMITIVETYPE prim, UINT primCount);
   Com<class MTLD3D9CommonTexture, false> m_textures[D3D9_MAX_TEXTURE_UNITS];
   // Sampler state: wined3d's shape (combined PS+VS samplers, indexed
   // by D3DSAMPLERSTATETYPE 1..D3DSAMP_DMAPOFFSET). Slot 0 is unused

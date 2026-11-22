@@ -22,6 +22,7 @@
 #include "config/config.hpp"
 #include "d3d11_device.hpp"
 #include "log/log.hpp"
+#include "util_env.hpp"
 #include "util_string.hpp"
 #include "dxmt_capture.hpp"
 #include <exception>
@@ -34,6 +35,13 @@ D3D11CoreCreateDevice(IDXGIFactory *pFactory, IDXGIAdapter *pAdapter,
                       UINT Flags, const D3D_FEATURE_LEVEL *pFeatureLevels,
                       UINT FeatureLevels, ID3D11Device **ppDevice) {
   InitReturnPtr(ppDevice);
+
+  // Allow Media Foundation clients to fall back to CPU-backed samples when
+  // the D3D11 video-device path cannot supply the transforms they expect.
+  // A normal rendering device does not request VIDEO_SUPPORT.
+  if ((Flags & D3D11_CREATE_DEVICE_VIDEO_SUPPORT) &&
+      env::getEnvVar("MADEIRA_D3D11_NO_VIDEO_DEVICE") == "1")
+    return DXGI_ERROR_UNSUPPORTED;
 
   Com<IMTLDXGIAdapter> dxgi_adapter;
 

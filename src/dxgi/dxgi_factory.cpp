@@ -176,8 +176,88 @@ public:
       IDXGIOutput *pRestrictToOutput, IDXGISwapChain1 **ppSwapChain) override {
     InitReturnPtr(ppSwapChain);
 
-    ERR("Not implemented");
-    return E_NOTIMPL;
+    /* iOS-Madeira (godot-composition-swapchain): Godot 4.5's Direct3D 12
+     * driver (official Windows builds define DCOMP_ENABLED) only ever asks
+     * for a composition swap chain and later binds it to its window with
+     * Dcomp.dll (CreateTargetForHwnd + Visual::SetContent). There is no
+     * desktop compositor here, so the swap chain is made for the process's
+     * own top-level window up front, through the same CreateSwapChainForHwnd
+     * path as every other game; Wine's dcomp then accepts Godot's calls.
+     * env MADEIRA_DXGI_COMPOSITION=0 answers "Not implemented" as before. */
+    if (!CompositionEnabled()) {
+      ERR("Not implemented");
+      return E_NOTIMPL;
+    }
+    if (!ppSwapChain || !pDesc || !pDevice)
+      return DXGI_ERROR_INVALID_CALL;
+
+    static std::atomic<int> said{0};
+    int candidates = 0;
+    HWND hwnd = FindCompositionWindow(&candidates);
+    if (!hwnd) {
+      if (said.fetch_add(1) < 4)
+        ERR("[dxgi-composition] no visible top-level window in this process "
+            "(env MADEIRA_DXGI_COMPOSITION=0 turns this off)");
+      return E_NOTIMPL;
+    }
+
+    /* Premultiplied alpha only means something to a compositor; a window's
+     * own swap chain shows its pixels opaque. */
+    DXGI_SWAP_CHAIN_DESC1 desc = *pDesc;
+    desc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
+
+    HRESULT hr = CreateSwapChainForHwnd(pDevice, hwnd, &desc, nullptr,
+                                        pRestrictToOutput, ppSwapChain);
+    if (said.fetch_add(1) < 4)
+      WARN("[dxgi-composition] composition swap chain ", desc.Width, "x",
+           desc.Height, " made for window ", (void *)hwnd, " (largest of ",
+           candidates, " visible windows), hr ",
+           (void *)(uintptr_t)(uint32_t)hr,
+           " (env MADEIRA_DXGI_COMPOSITION=0 turns this off)");
+    return hr;
+  }
+
+  static bool CompositionEnabled() {
+    static int state = -1;
+    if (state < 0) {
+      char v[8];
+      DWORD n = GetEnvironmentVariableA("MADEIRA_DXGI_COMPOSITION", v, sizeof v);
+      state = (n == 1 && v[0] == '0') ? 0 : 1;
+    }
+    return state == 1;
+  }
+
+  /* The largest visible, non-tool top-level window this process owns; the
+   * active window if none qualifies. */
+  struct CompositionWindowPick {
+    DWORD pid;
+    HWND best;
+    LONG area;
+    int count;
+  };
+  static BOOL CALLBACK PickCompositionWindow(HWND w, LPARAM p) {
+    CompositionWindowPick *k = (CompositionWindowPick *)p;
+    DWORD owner = 0;
+    GetWindowThreadProcessId(w, &owner);
+    if (owner != k->pid || !IsWindowVisible(w) ||
+        (GetWindowLongW(w, GWL_EXSTYLE) & WS_EX_TOOLWINDOW))
+      return TRUE;
+    RECT r;
+    if (!GetClientRect(w, &r))
+      return TRUE;
+    k->count++;
+    LONG area = (r.right - r.left) * (r.bottom - r.top);
+    if (area > k->area) {
+      k->area = area;
+      k->best = w;
+    }
+    return TRUE;
+  }
+  static HWND FindCompositionWindow(int *candidates) {
+    CompositionWindowPick pick = {GetCurrentProcessId(), nullptr, -1, 0};
+    EnumWindows(PickCompositionWindow, (LPARAM)&pick);
+    *candidates = pick.count;
+    return pick.best ? pick.best : GetActiveWindow();
   }
 
   HRESULT STDMETHODCALLTYPE EnumAdapters(UINT Adapter,

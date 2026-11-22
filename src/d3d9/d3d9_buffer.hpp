@@ -211,6 +211,11 @@ public:
     return m_dirty;
   }
   void refreshWholeMirror();
+  // Bring only the bytes [begin, end) of the current allocation up to date: the
+  // index range one draw reads (DrawIndexedPrimitive's StartIndex and index
+  // count). An empty range stores nothing. See the definition for why this is
+  // as safe as refreshWholeMirror; MADEIRA_D3D9_INDEX_RANGE=0 makes it one.
+  void refreshRange(UINT begin, UINT end);
   // Host-mapped pointer to the current index data: the allocation draws read
   // when the buffer is direct-mapped, else the host mirror, which is then
   // authoritative. The index fan-remap path in d3d9_device.cpp reads the
@@ -247,6 +252,20 @@ private:
   // then leave every later write unpublished. While this is set, a refresh
   // re-uploads unconditionally.
   bool m_writeLocked = false;
+  // refreshRange only. A write lock without NOOVERWRITE since the current
+  // allocation was installed: the application may then have changed bytes a
+  // recorded draw reads, so the next store renames first.
+  bool m_renameDue = false;
+  // refreshRange only. Such a lock is still held, so every store renames.
+  bool m_renameEachStore = false;
+  // refreshRange only. The bytes of the current allocation known to equal the
+  // mirror, [m_currentBegin, m_currentEnd); empty after every write lock, since
+  // which bytes the application writes is not known.
+  UINT m_currentBegin = 0;
+  UINT m_currentEnd = 0;
+  // refreshWholeMirror's rename with its out-of-memory fallback, for
+  // refreshRange: false when the store has to be skipped.
+  bool renameBeforeStore();
   // See MTLD3D9VertexBuffer::m_direct.
   bool m_direct = false;
   D3D9BufferLockCount m_lockCount;

@@ -26,6 +26,7 @@
 #include "thread.hpp"
 #include "util_flags.hpp"
 #include "util_svector.hpp"
+#include "util_env.hpp"
 
 namespace dxmt {
 
@@ -98,6 +99,17 @@ struct TextureViewKey {
     return impl_;
   }
 };
+
+// Madeira: index into Texture::viewDescriptors_ for a view key. Since DXMT
+// v0.80 a TextureViewKey packs mip/array fields above the 28-bit index, so
+// indexing with the whole key (implicit uint64_t) reads far past the array
+// (FNV/LEGO crash, d3d9-emulated.dll+0xb0e17, 0.2.35).
+// MADEIRA_DXMT_VIEWKEY_INDEX=0 restores the old whole-key lookup.
+inline uint64_t
+ViewDescIndex(TextureViewKey key) {
+  static const bool use_index = env::getEnvVar("MADEIRA_DXMT_VIEWKEY_INDEX") != "0";
+  return use_index ? uint64_t(key.index) : uint64_t(key);
+}
 
 class Texture;
 class TextureAllocation;
@@ -255,7 +267,7 @@ public:
   uint32_t
   firstMiplevel(TextureViewKey view) {
     std::shared_lock<dxmt::shared_mutex> lock(mutex_);
-    return viewDescriptors_[view].firstMiplevel;
+    return viewDescriptors_[ViewDescIndex(view)].firstMiplevel;
   }
 
   WMTTextureType

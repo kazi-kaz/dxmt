@@ -368,7 +368,7 @@ TextureViewKey Texture::checkViewUseFormat(TextureViewKey key, WMTPixelFormat fo
 TextureViewKey
 Texture::checkViewUseSwizzle(TextureViewKey key, WMTTextureSwizzleChannels swizzle) {
   std::shared_lock<dxmt::shared_mutex> shared_lock(mutex_);
-  auto view = viewDescriptors_[key];
+  auto view = viewDescriptors_[ViewDescIndex(key)];
   shared_lock = {};
   if (unlikely(!SwizzleEqual(view.swizzle, swizzle))) {
     auto new_view_desc = view;
@@ -381,7 +381,7 @@ Texture::checkViewUseSwizzle(TextureViewKey key, WMTTextureSwizzleChannels swizz
 TextureViewKey
 Texture::checkViewUseMipRange(TextureViewKey key, uint32_t firstMiplevel, uint32_t miplevelCount) {
   std::shared_lock<dxmt::shared_mutex> shared_lock(mutex_);
-  auto view = viewDescriptors_[key];
+  auto view = viewDescriptors_[ViewDescIndex(key)];
   shared_lock = {};
   if (unlikely(view.firstMiplevel != firstMiplevel || view.miplevelCount != miplevelCount)) {
     auto new_view_desc = view;
